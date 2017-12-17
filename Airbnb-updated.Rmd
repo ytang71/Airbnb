@@ -1,0 +1,195 @@
+---
+title: "Airbnb"
+author: "Luna Yihe Tang"
+date: "November 26, 2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+##Introduction
+As the development of sharing economy, Airbnb has become a popular choice for accomendation and a substitute of hotel staying. Thanks to Airbnb, thousands of vacant space got properly utilized. Some hosts and guests also made personal connections and even friendship through this business. The data I analized contains information of Boston Airbnb from Aug 2016 to July 2017. The data of Nov 2016 and Dec 2016 were removed because they do not contain how many bedrooms each property contains, while I will be comparing the price on a per-bedroom basis. My data contains room id, host id, roomtype, neighborhood, number of reviews, overall satisfaction rate, price, latitude, and longitude. I also analyzed a data sheet that contains all the detailed information by each Airbnb room in Boston in text analysis. Writer wants to figure out:
+1. What are the the most mentioned words in the summary where the host describing their properties; what are the most mentioned house rules?
+2. Where are the properties distributed? What types of rooms are there? 
+3. what are the important effects on price and satisfaction rate?
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(sqldf)
+library(ggplot2)
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(RColorBrewer)
+library(dplyr)
+library(lme4)
+```
+
+
+
+##Text Analysis
+
+```{r}
+datatext<-read.csv("listings(1).csv",stringsAsFactors = FALSE)
+#Text Analysis_Summary
+jeopCorpus <- Corpus(VectorSource(datatext$summary))
+jeopCorpus <- tm_map(jeopCorpus, PlainTextDocument)
+jeopCorpus <- tm_map(jeopCorpus, stripWhitespace)
+jeopCorpus <- tm_map(jeopCorpus, tolower)
+jeopCorpus <- tm_map(jeopCorpus, removeNumbers)
+jeopCorpus <- tm_map(jeopCorpus, removePunctuation)
+jeopCorpus <- tm_map(jeopCorpus, removeWords, stopwords('english'))
+jeopCorpus <- tm_map(jeopCorpus, stemDocument)
+jeopCorpus <- tm_map(jeopCorpus, removeWords, "bedroom")
+jeopCorpus <- tm_map(jeopCorpus, removeWords, "room")
+jeopCorpus <- tm_map(jeopCorpus, removeWords, "boston")
+jeopCorpus <- tm_map(jeopCorpus, removeWords, "pleas")
+jeopCorpus <- tm_map(jeopCorpus, removeWords, "guest")
+pal<-brewer.pal(4,"Set1")
+wordcloud(jeopCorpus, max.words = 50, random.order = FALSE,colors=pal)
+```
+The word cloud of the summary of each property shows lacation, walk, minute, kitchen, downtown, restaurant are the most mentioned words. As wen can see, the location of the property is the most important factor by which the host used to sell their rooms. An apartment with downtown location, walking distance to major sights, close to restaurants would be considered to be the most attractive place to stay, from the host's perspective. Secondly, the structure of the apartment itself is also important. Whether it has a kitchen, a private bedroom and bathroom is also an important factor. 
+```{r}
+#Text Analysis_House Rules
+jeopCorpus <- Corpus(VectorSource(datatext$house_rules))
+jeopCorpus <- tm_map(jeopCorpus, PlainTextDocument)
+jeopCorpus <- tm_map(jeopCorpus, stripWhitespace)
+jeopCorpus <- tm_map(jeopCorpus, tolower)
+jeopCorpus <- tm_map(jeopCorpus, removeNumbers)
+jeopCorpus <- tm_map(jeopCorpus, removePunctuation)
+jeopCorpus <- tm_map(jeopCorpus, removeWords, stopwords('english'))
+jeopCorpus <- tm_map(jeopCorpus, stemDocument)
+jeopCorpus <- tm_map(jeopCorpus, removeWords, "bedroom")
+jeopCorpus <- tm_map(jeopCorpus, removeWords, "room")
+jeopCorpus <- tm_map(jeopCorpus, removeWords, "boston")
+jeopCorpus <- tm_map(jeopCorpus, removeWords, "pleas")
+jeopCorpus <- tm_map(jeopCorpus, removeWords, "guest")
+pal<-brewer.pal(4,"Set1")
+wordcloud(jeopCorpus, max.words = 100, random.order = FALSE,colors=pal)
+```
+The word cloud of the house rules are also interested to look at. Pet and smoke are the top two most frequently mentioned words. "Use" and "respect" are also worth our attention.The host want to be clear about what are the things the guests are allowed to "use", and be respectful is the most important quality that the hosts require. 
+
+```{r}
+#Read csv files
+data1608<-read.csv("2016-8.csv")
+data1609<-read.csv("2016-9.csv")
+data1610<-read.csv("2016-10.csv")
+data1701<-read.csv("2017-1.csv")
+data1702<-read.csv("2017-2.csv")
+data1703<-read.csv("2017-3.csv")
+data1704<-read.csv("2017-4.csv")
+data1705<-read.csv("2017-5.csv")
+data1706<-read.csv("2017-6.csv")
+data1707<-read.csv("2017-7.csv")
+```
+Read data
+
+## Map of a distribution of Airbnb properties in Boston using the most recent data(July 2017)
+```{r}
+library(ggmap)
+map1707 <- (data.frame(
+  x = data1707$latitude,
+  y = data1707$longitude
+))
+qmplot(y, x, data = map1707, colour = I('blue'), size = I(0.1), darken = .1)
+
+```
+From the map we can see there are two major cluster of plots. 1.Downtown Boston and Commonwealth Avenue; 2. Allston
+
+```{r}
+#Combine monthly files to one data frame to consider the situation for a year
+data<-rbind(data1608,data1609,data1610,data1701,data1702,data1703,data1704,data1705,data1706,data1707)
+data$bedrooms[data$bedrooms == 0] <- NA #Turn 0 values into NAs in order to remove the properties with 0 bedrooms, which does not make any sense. Even if it is a studio, I still need to compare the price on a per-room basis, so I'd rather remove them. 
+data$reviews[data$reviews == 0] <- NA #I removed rows with 0 reviews becasue probably means those property are not rented very often.
+data$overall_satisfaction[data$overall_satisfaction == 0.0] <- NA # I removed rows with 0 satisfaction rates becasue 0 does not mean they have 0 star, it is just because no one rated it. 
+newdata<-na.omit(data) # Removed all the unwanted data.
+newdata$price_per_bedroom<-round(newdata$price/newdata$bedrooms,0)# Add price per bedroom to the original dataset, round them to integers.
+```
+
+##EDA
+What many rooms are there by room types?
+```{r}
+table(newdata$room_type)#Count by room type
+```
+
+```{r}
+count_roomtype<-sqldf("SELECT COUNT(room_id) as number_of_rooms, room_type FROM newdata GROUP BY room_type")
+#distribution of property type
+ggplot(count_roomtype,aes(x=room_type,y=number_of_rooms,fill=room_type))+geom_bar(stat="identity")+geom_text(aes(label=number_of_rooms), size = 4)+labs(title="Number of Rooms of Each Type",x="room type",y="number of rooms")
+```
+Most of the hosts rent their entire apartment. Only a few of hosts are willing to share their room with guests.
+
+What is the cheapest room type? 
+
+```{r}
+bdprice_by_roomtype<-sqldf("SELECT room_type,avg(price_per_bedroom) as avg_bdprice FROM newdata GROUP BY room_type")
+#Average Price Per Bedroom of Each Room Type
+bdprice_by_roomtype$avg_bdprice<-round(bdprice_by_roomtype$avg_bdprice)
+ggplot(bdprice_by_roomtype,aes(x=room_type,y=avg_bdprice,fill=room_type))+geom_bar(stat="identity")+labs(title="Average Price By Room Type",x="room type",y="average price")+geom_text(aes(label=avg_bdprice), size = 4)
+```
+After deviding the price of entire home/apartment by how many bedrooms it has, the unit price of a bedroom of an entire home/apartment is still the highest. That's probabaly becasue usually entire apartments have a living room which can also accomodate some guests, and it is perfect for a group of travellers to have their own space as a group. Not surprisingly, share room has the lowest prices becasue who doesn't want their own room?
+
+```{r}
+#Room type-price per room distribution
+p4 <- ggplot(newdata, aes(x=room_type, y=price_per_bedroom, fill=price_per_bedroom)) + geom_boxplot() + scale_fill_brewer(palette=1) + ggtitle("price pre room distribution among room types") + theme(legend.position="bottom", legend.direction="horizontal")
+p4
+```
+There are a lot of high prices of each type, while not much low prices according to the box plot. Next time if you want to save money, get a shared room in Airbnb. 
+
+What neighborhood has the most Airbnb rooms?
+```{r}
+table(newdata$neighborhood)
+#Count by neighborhood
+count_neighborhood<-sqldf("SELECT COUNT(room_id) as number_of_rooms, neighborhood FROM newdata GROUP BY neighborhood")
+ggplot(count_neighborhood,aes(x=neighborhood,y=number_of_rooms,fill=neighborhood))+geom_bar(stat="identity")+geom_text(aes(label=number_of_rooms), size = 2)+theme(axis.text.x = element_text(angle = 90, hjust = 1))+labs(title="Number of Rooms by Neighborhood",x="neighborhood",y="number of rooms")
+```
+Jamaica Plain, Dorchester, and South End have the most properties. 
+
+Where to stay to get the cheapest price?
+```{r}
+price_by_neighborhood<-sqldf("SELECT neighborhood,avg(price) as average_price FROM newdata GROUP BY neighborhood")#Average Price of Each Neighborhood
+ggplot(price_by_neighborhood,aes(x=neighborhood,y=average_price,fill=neighborhood))+geom_bar(stat="identity")+geom_text(aes(label=average_price), size = 1)+theme(axis.text.x = element_text(angle = 90, hjust = 1))+labs(title="Average Room Price by Neighborhood",x="neighborhood",y="average price")
+```
+We can see from the graph that Allston, Dorchester, Mattapan, and Roslindale have the lowerst prices. However, consider the number of good restaurants nearby, I highly recommend Allston!
+
+What roomtype gets the highest satisfaction rate?
+```{r}
+#Box Plot Overall Satisfaction by room types.
+ggplot(newdata, aes(x=room_type, y=overall_satisfaction, fill=overall_satisfaction)) + geom_boxplot()
+```
+From the box plot, Nearly all the properties got 4.5 or 5 rating, no matter what roomtype it is. That's becasue people usually want to give a positive feedback, and people rate their Airbnb either they receive a very nice stay, or something extremenly horrible happened. That's why there are a few low satisfaction rates of each room type. Overall, most of the people are ok with their stay at Airbnb. But some people will just give a 5 star to a ok stay just for their won convenience. I personally do that too. I gave every Ok Uber driver a 5 star just becasue I won't bother rating them. A suggestion to Airbnb is, in order to get more detailed feedback, use discount or other benefits to encourage guests filling out more detailed feedbacks.
+
+##Multilevel Models
+Since we found out ratings are almost all 4.5 to 5 stars, there is no need to build a model use rating as outcome variables. Let's focus on what affects price per bedroom at this moment. 
+
+First I built a model using price per bedroom as outcome, number of reviews and overall satisfaction as numeric random variables, use room type, neighborhood, and room-id as groups with various intercepts. We assume that errors are normally distributed.  
+```{r}
+model1<-lmer(price_per_bedroom~reviews+overall_satisfaction+(1|room_type)+(1|neighborhood)+(1|room_id), data=newdata,REML=FALSE)
+summary(model1)
+```
+From the model summary, the overall satisfaction has a positive effect on the price-per-bedroom, which means a 5-star-rating room are more likely to have a 1.4 higher price than a 4-start-rating property with all the other factors remaining the same, because its quality and popularity. However, number of reviews has a negative effect on price per bedroom, which might because cheaper rooms got the most guests, and then got the most reviews. Therefore, the model doesn't mean if a host want to raise the price of his property, he needs to somehow get less number of reviews.
+```{r}
+plot(model1,ylim=c(-300,300))
+```
+
+```{r}
+plot(resid(model1))+abline(0, 0)
+```
+From the two plots above, the model fit is not ideal. Errors are not normally distributed which means our assumptions cannot be met. 
+
+What if we delete room-id from our model, and assume each room's performance for each month are independent?
+```{r}
+model2<-lmer(price_per_bedroom~reviews+overall_satisfaction+(1|room_type)+(1|neighborhood), data=newdata,REML=FALSE)
+summary(model2)
+```
+The AIC is still pretty big, so it didn't help. 
+
+What if we delete number of reviews since it's effect cannot be correctly shown by the previous model?
+```{r}
+model3<-lmer(price_per_bedroom~+overall_satisfaction+(1|room_type)+(1|neighborhood), data=newdata,REML=FALSE)
+summary(model3)
+```
+
+We still got a similar model summary except for the high coefficient of overall satisfaction since we deleted room_id as a variable. However, we found out room_id cannot be deleted because we can't ignore the fact that the same properties were recorded repeatedly in each month. Overall, model 1 is still the best model among these three, although it has a large AIC, we can still learn meaningful things about Airbnb from that model. 
+
+##Conclusion
+From this analysis, I got a general sense of Airbnb Boston, including what's in the property summary and house rules, what type of room and neighborhood to choose to get the best deal, the problem of current rating system and how to improve that, and from the model, how much effect does rating have on the avreage per bedroom.However, I haven't successfully found a good model which can explain my data well. I think that is because the errors are not normally distributed, and the variables I use are not independent(price, rating, number of reviews, roomtype, and neighborhoods are all somehow correlated). Writer will keeping trying to find a better model through the next semester's statistics training. However, this Airbnb research still gives a common sense for hosts to improve their profit, and for guests to find a better deal.  
